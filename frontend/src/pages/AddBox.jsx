@@ -6,15 +6,15 @@ export default function AddBox() {
     try {
       const savedBox = await createBox(box);
       if (savedBox && !savedBox.message) {
-        // ✅ Success
+        
         window.alert("Box added successfully!");
       } else {
-        // ❌ Show actual reason from backend
+        
         window.alert(savedBox.message || "Failed to add box.");
       }
     } catch (err) {
       console.error(err);
-      // Show backend error message if available
+     
       window.alert(err?.response?.data?.message || "Failed to add box.");
     }
   };

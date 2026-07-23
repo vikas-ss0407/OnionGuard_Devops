@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7
+    container_name: onionguardmongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - onionguardnetwork
+
+  backend:
+    image: vikasss0407/onionbackend:latest
+    container_name: onionguardbackendcontainer
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    ports:
+      - "5002:5000"
+    depends_on:
+      - mongodb
+    networks:
+      - onionguardnetwork
+
+  frontend:
+    image: vikasss0407/onionfrontend:latest
+    container_name: onionguardfrontendcontainer
+    restart: unless-stopped
+    ports:
+      - "5001:5173"
+    depends_on:
+      - backend
+    networks:
+      - onionguardnetwork
+
+volumes:
+  mongodb_data:
+
+networks:
+  onionguardnetwork:
