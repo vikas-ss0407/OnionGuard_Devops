@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: onion-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: onion-frontend
+  template:
+    metadata:
+      labels:
+        app: onion-frontend
+    spec:
+      containers:
+      - name: frontend
+        image: vikasss0407/onionfrontend:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 5173
