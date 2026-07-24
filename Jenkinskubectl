@@ -1,0 +1,277 @@
+pipeline {
+    agent any
+
+    parameters {
+        string(
+            name: 'BRANCH_NAME',
+            defaultValue: 'main',
+            description: 'GitHub Branch'
+        )
+
+        booleanParam(
+            name: 'DEPLOY',
+            defaultValue: false,
+            description: 'Deploy Docker Containers and Kubernetes'
+        )
+    }
+
+    environment {
+
+        GITHUB_URL = 'https://github.com/vikas-ss0407/OnionGuard_Devops.git'
+
+        FRONTEND_IMAGE = 'vikasss0407/onionguardfrontend'
+        BACKEND_IMAGE  = 'vikasss0407/onionguardbackend'
+
+        IMAGE_TAG = "${BUILD_NUMBER}"
+    }
+
+    stages {
+
+        stage('Clean Workspace') {
+            steps {
+                cleanWs()
+            }
+        }
+
+        stage('Clone Repository') {
+            steps {
+                git branch: params.BRANCH_NAME,
+                    credentialsId: 'vikas_github_repo',
+                    url: env.GITHUB_URL
+            }
+        }
+
+        stage('Copy Backend .env') {
+            steps {
+
+                withCredentials([
+                    file(
+                        credentialsId: 'OnionGuard_Backend',
+                        variable: 'ENV_FILE'
+                    )
+                ]) {
+
+                    sh '''
+                    cp "$ENV_FILE" backend/.env
+                    '''
+
+                }
+            }
+        }
+
+        stage('Build Frontend Image') {
+            steps {
+
+                dir('frontend') {
+
+                    sh """
+                    docker build \
+                    -t ${FRONTEND_IMAGE}:${IMAGE_TAG} .
+                    """
+
+                }
+
+            }
+        }
+
+        stage('Build Backend Image') {
+            steps {
+
+                dir('backend') {
+
+                    sh """
+                    docker build \
+                    -t ${BACKEND_IMAGE}:${IMAGE_TAG} .
+                    """
+
+                }
+
+            }
+        }
+
+        stage('Docker Login') {
+
+            steps {
+
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'Vikas_Docker',
+                        usernameVariable: 'DOCKER_USERNAME',
+                        passwordVariable: 'DOCKER_PASSWORD'
+                    )
+                ]) {
+
+                    sh '''
+                    echo "$DOCKER_PASSWORD" | docker login \
+                    -u "$DOCKER_USERNAME" \
+                    --password-stdin
+                    '''
+
+                }
+
+            }
+
+        }
+
+        stage('Push Frontend Image') {
+            steps {
+
+                sh """
+                docker tag ${FRONTEND_IMAGE}:${IMAGE_TAG} ${FRONTEND_IMAGE}:latest
+
+                docker push ${FRONTEND_IMAGE}:${IMAGE_TAG}
+
+                docker push ${FRONTEND_IMAGE}:latest
+                """
+
+            }
+        }
+
+        stage('Push Backend Image') {
+            steps {
+
+                sh """
+                docker tag ${BACKEND_IMAGE}:${IMAGE_TAG} ${BACKEND_IMAGE}:latest
+
+                docker push ${BACKEND_IMAGE}:${IMAGE_TAG}
+
+                docker push ${BACKEND_IMAGE}:latest
+                """
+
+            }
+        }
+
+        stage('Deploy Docker Containers') {
+
+            when {
+                expression {
+                    return params.DEPLOY
+                }
+            }
+
+            steps {
+
+                sh '''
+
+                echo "Creating Docker Network..."
+
+                docker network inspect onionguardnetwork >/dev/null 2>&1 || \
+                docker network create onionguardnetwork
+
+                echo "Removing Existing Containers..."
+
+                docker rm -f onionguardfrontendcontainer || true
+                docker rm -f onionguardbackendcontainer || true
+
+                echo "Starting Backend Container..."
+
+                docker run -d \
+                --name onionguardbackendcontainer \
+                --network onionguardnetwork \
+                -p 5002:5000 \
+                --env-file backend/.env \
+                ${BACKEND_IMAGE}:${IMAGE_TAG}
+
+                echo "Starting Frontend Container..."
+
+                docker run -d \
+                --name onionguardfrontendcontainer \
+                --network onionguardnetwork \
+                -p 5001:5173 \
+                ${FRONTEND_IMAGE}:${IMAGE_TAG}
+
+                '''
+
+            }
+
+        }
+
+        stage('Deploy to Kubernetes') {
+
+            when {
+                expression {
+                    return params.DEPLOY
+                }
+            }
+
+            steps {
+
+                sh '''
+
+                echo "==============================="
+                echo "Starting Minikube"
+                echo "==============================="
+
+                minikube start --driver=docker || true
+
+                echo "==============================="
+                echo "Creating Backend Secret"
+                echo "==============================="
+
+                kubectl delete secret backend-env --ignore-not-found
+
+                kubectl create secret generic backend-env \
+                --from-env-file=backend/.env
+
+                echo "==============================="
+                echo "Applying Kubernetes Manifests"
+                echo "==============================="
+
+                kubectl apply -f backend-deployment.yaml
+                kubectl apply -f backend-service.yaml
+                kubectl apply -f frontend-deployment.yaml
+                kubectl apply -f frontend-service.yaml
+
+                echo "==============================="
+                echo "Restarting Deployments"
+                echo "==============================="
+
+                kubectl rollout restart deployment onion-backend
+                kubectl rollout restart deployment onion-frontend
+
+                echo "==============================="
+                echo "Waiting for Deployments"
+                echo "==============================="
+
+                kubectl rollout status deployment/onion-backend --timeout=180s
+                kubectl rollout status deployment/onion-frontend --timeout=180s
+
+                echo ""
+                echo "========== Pods =========="
+                kubectl get pods
+
+                echo ""
+                echo "======= Services ========="
+                kubectl get svc
+
+                echo ""
+                echo "====== Deployments ======="
+                kubectl get deployments
+
+                '''
+
+            }
+
+        }
+
+    }
+
+    post {
+
+        success {
+            echo "Pipeline Completed Successfully."
+        }
+
+        failure {
+            echo "Pipeline Failed."
+        }
+
+        always {
+
+            sh 'docker logout || true'
+
+        }
+
+    }
+
+}
