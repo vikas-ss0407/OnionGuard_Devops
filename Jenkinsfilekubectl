@@ -186,73 +186,97 @@ pipeline {
 
         }
 
-        stage('Deploy to Kubernetes') {
+stage('Deploy to Kubernetes') {
 
-            when {
-                expression {
-                    return params.DEPLOY
-                }
-            }
-
-            steps {
-
-                sh '''
-
-                echo "==============================="
-                echo "Starting Minikube"
-                echo "==============================="
-
-                minikube start --driver=docker --force
-
-                echo "==============================="
-                echo "Creating Backend Secret"
-                echo "==============================="
-
-                kubectl delete secret backend-env --ignore-not-found
-
-                kubectl create secret generic backend-env \
-                --from-env-file=backend/.env
-
-                echo "==============================="
-                echo "Applying Kubernetes Manifests"
-                echo "==============================="
-
-                kubectl apply -f backend-deployment.yaml
-                kubectl apply -f backend-service.yaml
-                kubectl apply -f frontend-deployment.yaml
-                kubectl apply -f frontend-service.yaml
-
-                echo "==============================="
-                echo "Restarting Deployments"
-                echo "==============================="
-
-                kubectl rollout restart deployment onion-backend
-                kubectl rollout restart deployment onion-frontend
-
-                echo "==============================="
-                echo "Waiting for Deployments"
-                echo "==============================="
-
-                kubectl rollout status deployment/onion-backend --timeout=180s
-                kubectl rollout status deployment/onion-frontend --timeout=180s
-
-                echo ""
-                echo "========== Pods =========="
-                kubectl get pods
-
-                echo ""
-                echo "======= Services ========="
-                kubectl get svc
-
-                echo ""
-                echo "====== Deployments ======="
-                kubectl get deployments
-
-                '''
-
-            }
-
+    when {
+        expression {
+            return params.DEPLOY
         }
+    }
+
+    steps {
+
+        sh '''
+
+        set -e
+
+        echo "==============================="
+        echo "Cleaning Previous Minikube"
+        echo "==============================="
+
+        minikube delete --all --purge || true
+
+        echo "==============================="
+        echo "Starting Minikube"
+        echo "==============================="
+
+        minikube start \
+            --driver=docker \
+            --force \
+            --cpus=2 \
+            --memory=4096
+
+        echo "==============================="
+        echo "Verifying Cluster"
+        echo "==============================="
+
+        kubectl config current-context
+        kubectl cluster-info
+        kubectl get nodes
+
+        echo "==============================="
+        echo "Creating Backend Secret"
+        echo "==============================="
+
+        kubectl delete secret backend-env --ignore-not-found
+
+        kubectl create secret generic backend-env \
+            --from-env-file=backend/.env
+
+        echo "==============================="
+        echo "Applying Kubernetes Manifests"
+        echo "==============================="
+
+        kubectl apply -f backend-deployment.yaml
+        kubectl apply -f backend-service.yaml
+        kubectl apply -f frontend-deployment.yaml
+        kubectl apply -f frontend-service.yaml
+
+        echo "==============================="
+        echo "Restarting Deployments"
+        echo "==============================="
+
+        kubectl rollout restart deployment/onion-backend
+        kubectl rollout restart deployment/onion-frontend
+
+        echo "==============================="
+        echo "Waiting for Deployments"
+        echo "==============================="
+
+        kubectl rollout status deployment/onion-backend --timeout=300s
+        kubectl rollout status deployment/onion-frontend --timeout=300s
+
+        echo "==============================="
+        echo "Pods"
+        echo "==============================="
+
+        kubectl get pods -o wide
+
+        echo "==============================="
+        echo "Services"
+        echo "==============================="
+
+        kubectl get svc
+
+        echo "==============================="
+        echo "Deployments"
+        echo "==============================="
+
+        kubectl get deployments
+
+        '''
+    }
+}
 
     }
 
