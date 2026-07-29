@@ -202,7 +202,7 @@ pipeline {
                 echo "Starting Minikube"
                 echo "==============================="
 
-                minikube start --driver=docker || true
+                minikube start --driver=docker --force
 
                 echo "==============================="
                 echo "Creating Backend Secret"
