@@ -201,23 +201,7 @@ stage('Deploy to Kubernetes') {
         set -e
 
         echo "==============================="
-        echo "Cleaning Previous Minikube"
-        echo "==============================="
-
-        minikube delete --all --purge || true
-
-        echo "==============================="
-        echo "Starting Minikube"
-        echo "==============================="
-
-        minikube start \
-            --driver=docker \
-            --force \
-            --cpus=2 \
-            --memory=4096
-
-        echo "==============================="
-        echo "Verifying Cluster"
+        echo "Verifying Kubernetes Cluster"
         echo "==============================="
 
         kubectl config current-context
@@ -277,7 +261,6 @@ stage('Deploy to Kubernetes') {
         '''
     }
 }
-
     }
 
     post {
