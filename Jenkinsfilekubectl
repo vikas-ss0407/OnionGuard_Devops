@@ -208,6 +208,7 @@ stage('Deploy to Kubernetes') {
         kubectl cluster-info
         kubectl get nodes
 
+
         echo "==============================="
         echo "Creating Backend Secret"
         echo "==============================="
@@ -217,14 +218,13 @@ stage('Deploy to Kubernetes') {
         kubectl create secret generic backend-env \
             --from-env-file=backend/.env
 
+
         echo "==============================="
         echo "Applying Kubernetes Manifests"
         echo "==============================="
 
-        kubectl apply -f backend-deployment.yaml
-        kubectl apply -f backend-service.yaml
-        kubectl apply -f frontend-deployment.yaml
-        kubectl apply -f frontend-service.yaml
+        kubectl apply -f kubernetes/
+
 
         echo "==============================="
         echo "Restarting Deployments"
@@ -233,6 +233,7 @@ stage('Deploy to Kubernetes') {
         kubectl rollout restart deployment/onion-backend
         kubectl rollout restart deployment/onion-frontend
 
+
         echo "==============================="
         echo "Waiting for Deployments"
         echo "==============================="
@@ -240,17 +241,20 @@ stage('Deploy to Kubernetes') {
         kubectl rollout status deployment/onion-backend --timeout=300s
         kubectl rollout status deployment/onion-frontend --timeout=300s
 
+
         echo "==============================="
         echo "Pods"
         echo "==============================="
 
         kubectl get pods -o wide
 
+
         echo "==============================="
         echo "Services"
         echo "==============================="
 
         kubectl get svc
+
 
         echo "==============================="
         echo "Deployments"
