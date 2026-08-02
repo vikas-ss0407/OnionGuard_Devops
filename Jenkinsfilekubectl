@@ -196,73 +196,90 @@ stage('Deploy to Kubernetes') {
 
     steps {
 
-        sh '''
+        script {
 
-        set -e
+            try {
 
-        echo "==============================="
-        echo "Verifying Kubernetes Cluster"
-        echo "==============================="
+                sh '''
 
-        kubectl config current-context
-        kubectl cluster-info
-        kubectl get nodes
+                set -e
 
-
-        echo "==============================="
-        echo "Creating Backend Secret"
-        echo "==============================="
-
-        kubectl delete secret backend-env --ignore-not-found
-
-        kubectl create secret generic backend-env \
-            --from-env-file=backend/.env
+                echo "==============================="
+                echo "Deploying New Version"
+                echo "==============================="
 
 
-        echo "==============================="
-        echo "Applying Kubernetes Manifests"
-        echo "==============================="
-
-        kubectl apply -f kubernetes/
+                kubectl apply -f kubernetes/
 
 
-        echo "==============================="
-        echo "Restarting Deployments"
-        echo "==============================="
+                echo "Updating Backend Image"
 
-        kubectl rollout restart deployment/onion-backend
-        kubectl rollout restart deployment/onion-frontend
+                kubectl set image deployment/onion-backend \
+                backend=${BACKEND_IMAGE}:${IMAGE_TAG}
 
 
-        echo "==============================="
-        echo "Waiting for Deployments"
-        echo "==============================="
+                echo "Updating Frontend Image"
 
-        kubectl rollout status deployment/onion-backend --timeout=300s
-        kubectl rollout status deployment/onion-frontend --timeout=300s
+                kubectl set image deployment/onion-frontend \
+                frontend=${FRONTEND_IMAGE}:${IMAGE_TAG}
 
 
-        echo "==============================="
-        echo "Pods"
-        echo "==============================="
 
-        kubectl get pods -o wide
+                echo "Checking Backend Rollout"
 
-
-        echo "==============================="
-        echo "Services"
-        echo "==============================="
-
-        kubectl get svc
+                kubectl rollout status deployment/onion-backend \
+                --timeout=300s
 
 
-        echo "==============================="
-        echo "Deployments"
-        echo "==============================="
+                echo "Checking Frontend Rollout"
 
-        kubectl get deployments
+                kubectl rollout status deployment/onion-frontend \
+                --timeout=300s
 
-        '''
+
+
+                echo "Deployment Successful"
+
+                '''
+
+
+            } catch (err) {
+
+
+                echo "Deployment Failed!"
+                echo "Starting Automatic Rollback..."
+
+
+                sh '''
+
+                echo "Rolling back Backend"
+
+                kubectl rollout undo deployment/onion-backend
+
+
+                echo "Rolling back Frontend"
+
+                kubectl rollout undo deployment/onion-frontend
+
+
+
+                echo "Waiting for rollback completion"
+
+
+                kubectl rollout status deployment/onion-backend
+
+                kubectl rollout status deployment/onion-frontend
+
+
+                echo "Rollback Completed"
+
+                '''
+
+
+                error("Deployment failed. Rollback completed.")
+
+            }
+        }
     }
 }
     }
