@@ -1,0 +1,262 @@
+pipeline {
+
+    agent any
+
+    parameters {
+
+        string(
+            name: 'BRANCH_NAME',
+            defaultValue: 'main',
+            description: 'GitHub Branch'
+        )
+    }
+
+    environment {
+
+        // GitHub repository
+        GITHUB_URL = 'https://github.com/vikas-ss0407/OnionGuard_Devops.git'
+
+        // AWS configuration
+        AWS_REGION = 'eu-north-1'
+        AWS_ACCOUNT_ID = '670099380890'
+
+        // ECR registry
+        ECR_REGISTRY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+
+        // ECR repositories
+        FRONTEND_IMAGE = "${ECR_REGISTRY}/onionguard-frontend"
+        BACKEND_IMAGE  = "${ECR_REGISTRY}/onionguard-backend"
+
+        // Jenkins build number
+        IMAGE_TAG = "${BUILD_NUMBER}"
+    }
+
+
+    stages {
+
+
+        stage('Clean Workspace') {
+
+            steps {
+
+                echo 'Cleaning Jenkins workspace...'
+
+                cleanWs()
+            }
+        }
+
+
+        stage('Clone Repository') {
+
+            steps {
+
+                echo 'Cloning GitHub repository...'
+
+                git(
+                    branch: params.BRANCH_NAME,
+                    credentialsId: 'vikas_github_repo',
+                    url: env.GITHUB_URL
+                )
+            }
+        }
+
+
+        stage('Copy Backend .env') {
+
+            steps {
+
+                echo 'Copying backend environment file...'
+
+                withCredentials([
+                    file(
+                        credentialsId: 'OnionGuard_Backend',
+                        variable: 'ENV_FILE'
+                    )
+                ]) {
+
+                    sh '''
+                        cp "$ENV_FILE" backend/.env
+                    '''
+                }
+            }
+        }
+
+
+        stage('Login to Amazon ECR') {
+
+            steps {
+
+                echo 'Logging into Amazon ECR...'
+
+                sh '''
+                    aws ecr get-login-password \
+                    --region "$AWS_REGION" |
+                    docker login \
+                    --username AWS \
+                    --password-stdin "$ECR_REGISTRY"
+                '''
+            }
+        }
+
+
+        stage('Build Frontend Image') {
+
+            steps {
+
+                echo 'Building frontend Docker image...'
+
+                dir('frontend') {
+
+                    sh '''
+                        docker build \
+                        -t "$FRONTEND_IMAGE:$IMAGE_TAG" \
+                        .
+                    '''
+                }
+            }
+        }
+
+
+        stage('Build Backend Image') {
+
+            steps {
+
+                echo 'Building backend Docker image...'
+
+                dir('backend') {
+
+                    sh '''
+                        docker build \
+                        -t "$BACKEND_IMAGE:$IMAGE_TAG" \
+                        .
+                    '''
+                }
+            }
+        }
+
+
+        stage('Push Frontend Image to ECR') {
+
+            steps {
+
+                echo 'Pushing frontend image to ECR...'
+
+                sh '''
+                    echo "Tagging frontend image as latest..."
+
+                    docker tag \
+                    "$FRONTEND_IMAGE:$IMAGE_TAG" \
+                    "$FRONTEND_IMAGE:latest"
+
+
+                    echo "Pushing frontend version: $IMAGE_TAG"
+
+                    docker push \
+                    "$FRONTEND_IMAGE:$IMAGE_TAG"
+
+
+                    echo "Pushing frontend latest..."
+
+                    docker push \
+                    "$FRONTEND_IMAGE:latest"
+                '''
+            }
+        }
+
+
+        stage('Push Backend Image to ECR') {
+
+            steps {
+
+                echo 'Pushing backend image to ECR...'
+
+                sh '''
+                    echo "Tagging backend image as latest..."
+
+                    docker tag \
+                    "$BACKEND_IMAGE:$IMAGE_TAG" \
+                    "$BACKEND_IMAGE:latest"
+
+
+                    echo "Pushing backend version: $IMAGE_TAG"
+
+                    docker push \
+                    "$BACKEND_IMAGE:$IMAGE_TAG"
+
+
+                    echo "Pushing backend latest..."
+
+                    docker push \
+                    "$BACKEND_IMAGE:latest"
+                '''
+            }
+        }
+
+
+        stage('Verify ECR Images') {
+
+            steps {
+
+                echo 'Verifying images in ECR...'
+
+                sh '''
+                    echo "========================================"
+                    echo "Frontend ECR Images"
+                    echo "========================================"
+
+                    aws ecr list-images \
+                    --repository-name onionguard-frontend \
+                    --region "$AWS_REGION"
+
+
+                    echo "========================================"
+                    echo "Backend ECR Images"
+                    echo "========================================"
+
+                    aws ecr list-images \
+                    --repository-name onionguard-backend \
+                    --region "$AWS_REGION"
+                '''
+            }
+        }
+    }
+
+
+    post {
+
+        success {
+
+            echo '''
+            ========================================
+            ECR PUSH SUCCESSFUL
+            ========================================
+
+            Frontend:
+            ${FRONTEND_IMAGE}:${IMAGE_TAG}
+
+            Backend:
+            ${BACKEND_IMAGE}:${IMAGE_TAG}
+
+            ========================================
+            '''
+        }
+
+
+        failure {
+
+            echo '''
+            ========================================
+            PIPELINE FAILED
+            ========================================
+            '''
+        }
+
+
+        always {
+
+            sh '''
+                docker logout "$ECR_REGISTRY" || true
+            '''
+        }
+    }
+}
