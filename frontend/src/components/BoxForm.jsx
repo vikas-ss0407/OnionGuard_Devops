@@ -13,7 +13,7 @@ export default function BoxForm({ initialData, onSave, onCancel }) {
   const [quantity, setQuantity] = useState(initialData?.quantity || "");
   const [pricePerKg, setPricePerKg] = useState(initialData?.pricePerKg || "");
 
-  // Update local state when initialData changes (for modal reuse)
+ 
   useEffect(() => {
     setBoxNumber(initialData?.boxNumber || "");
     setType(initialData?.type || "");
