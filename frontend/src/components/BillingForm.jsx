@@ -11,7 +11,7 @@ export default function BillingForm({ boxes, shops, onAddBill }) {
     if (selectedBox) {
       const box = boxes.find((b) => b._id === selectedBox);
       setCostPerKg(box?.pricePerKg || "");
-      setQuantity(""); // Reset quantity for new box selection
+      setQuantity(""); 
     } else {
       setCostPerKg("");
       setQuantity("");
