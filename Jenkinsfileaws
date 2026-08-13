@@ -54,7 +54,7 @@ pipeline {
 
                 git(
                     branch: params.BRANCH_NAME,
-                    credentialsId: 'vikas_github_repo',
+                    credentialsId: 'Vikas',
                     url: env.GITHUB_URL
                 )
             }
