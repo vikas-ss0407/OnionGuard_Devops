@@ -9,7 +9,6 @@ const COOKIE_OPTIONS = {
   maxAge: 7 * 24 * 60 * 60 * 1000,
 };
 
-// Signup
 exports.signup = async (req, res) => {
   try {
     const { name, email, phone, password } = req.body;
