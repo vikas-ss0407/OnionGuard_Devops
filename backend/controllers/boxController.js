@@ -11,7 +11,7 @@ const computeMaintenanceAlerts = (createdAt) => {
   return alerts;
 };
 
-// Create Box
+
 exports.createBox = async (req, res) => {
   try {
     const { boxNumber, type, quantity, pricePerKg } = req.body;
