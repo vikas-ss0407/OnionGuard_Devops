@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: onion-backend
+
+spec:
+  replicas: 3
+
+  selector:
+    matchLabels:
+      app: onion-backend
+
+  template:
+    metadata:
+      labels:
+        app: onion-backend
+
+    spec:
+      containers:
+
+      - name: backend
+
+        image: vikasss0407/onionguardbackend:latest
+
+        imagePullPolicy: Always
+
+        ports:
+        - containerPort: 5000
+
+        envFrom:
+        - secretRef:
+            name: backend-env
+
+        resources:
+
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
+
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
