@@ -21,7 +21,7 @@ spec:
 
       - name: backend
 
-        image: vikasss0407/onionguardbackend:latest
+        image: 670099380890.dkr.ecr.eu-north-1.amazonaws.com/onionguard-backend:latest
 
         imagePullPolicy: Always
 
