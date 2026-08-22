@@ -143,12 +143,20 @@ pipeline {
                 echo 'Pushing frontend image to ECR...'
 
                 sh '''
+                    echo "Tagging frontend image as latest..."
+
                     docker tag \
                     "$FRONTEND_IMAGE:$IMAGE_TAG" \
                     "$FRONTEND_IMAGE:latest"
 
+
+                    echo "Pushing frontend version: $IMAGE_TAG"
+
                     docker push \
                     "$FRONTEND_IMAGE:$IMAGE_TAG"
+
+
+                    echo "Pushing frontend latest..."
 
                     docker push \
                     "$FRONTEND_IMAGE:latest"
@@ -164,12 +172,20 @@ pipeline {
                 echo 'Pushing backend image to ECR...'
 
                 sh '''
+                    echo "Tagging backend image as latest..."
+
                     docker tag \
                     "$BACKEND_IMAGE:$IMAGE_TAG" \
                     "$BACKEND_IMAGE:latest"
 
+
+                    echo "Pushing backend version: $IMAGE_TAG"
+
                     docker push \
                     "$BACKEND_IMAGE:$IMAGE_TAG"
+
+
+                    echo "Pushing backend latest..."
 
                     docker push \
                     "$BACKEND_IMAGE:latest"
@@ -185,9 +201,18 @@ pipeline {
                 echo 'Verifying images in ECR...'
 
                 sh '''
+                    echo "========================================"
+                    echo "Frontend ECR Images"
+                    echo "========================================"
+
                     aws ecr list-images \
                     --repository-name onionguard-frontend \
                     --region "$AWS_REGION"
+
+
+                    echo "========================================"
+                    echo "Backend ECR Images"
+                    echo "========================================"
 
                     aws ecr list-images \
                     --repository-name onionguard-backend \
@@ -214,6 +239,30 @@ pipeline {
         }
 
 
+        stage('Create Backend Kubernetes Secret') {
+
+            steps {
+
+                echo 'Creating backend Kubernetes secret...'
+
+                withCredentials([
+                    file(
+                        credentialsId: 'OnionGuard_Backend',
+                        variable: 'ENV_FILE'
+                    )
+                ]) {
+
+                    sh '''
+                        kubectl create secret generic backend-env \
+                        --from-env-file="$ENV_FILE" \
+                        --dry-run=client \
+                        -o yaml | kubectl apply -f -
+                    '''
+                }
+            }
+        }
+
+
         stage('Deploy to EKS') {
 
             steps {
@@ -229,31 +278,37 @@ pipeline {
                             echo "Deploying OnionGuard to EKS"
                             echo "========================================"
 
+
                             echo "Applying Kubernetes AWS manifests..."
 
                             kubectl apply -f kubernetesAws/
+
 
                             echo "Updating Backend Image..."
 
                             kubectl set image deployment/onion-backend \
                             backend=${BACKEND_IMAGE}:${IMAGE_TAG}
 
+
                             echo "Updating Frontend Image..."
 
                             kubectl set image deployment/onion-frontend \
                             frontend=${FRONTEND_IMAGE}:${IMAGE_TAG}
 
-                            echo "Waiting for Backend Rollout..."
+
+                            echo "Checking Backend Rollout..."
 
                             kubectl rollout status \
                             deployment/onion-backend \
                             --timeout=300s
 
-                            echo "Waiting for Frontend Rollout..."
+
+                            echo "Checking Frontend Rollout..."
 
                             kubectl rollout status \
                             deployment/onion-frontend \
                             --timeout=300s
+
 
                             echo "========================================"
                             echo "EKS Deployment Successful"
@@ -267,27 +322,36 @@ pipeline {
                         echo "EKS Deployment Failed!"
                         echo "Starting Automatic Rollback..."
 
+
                         sh '''
                             echo "Rolling back Backend..."
 
-                            kubectl rollout undo deployment/onion-backend || true
+                            kubectl rollout undo \
+                            deployment/onion-backend || true
+
 
                             echo "Rolling back Frontend..."
 
-                            kubectl rollout undo deployment/onion-frontend || true
+                            kubectl rollout undo \
+                            deployment/onion-frontend || true
 
-                            echo "Waiting for rollback..."
+
+                            echo "Waiting for rollback completion..."
+
 
                             kubectl rollout status \
                             deployment/onion-backend \
                             --timeout=300s || true
 
+
                             kubectl rollout status \
                             deployment/onion-frontend \
                             --timeout=300s || true
 
+
                             echo "Rollback Completed"
                         '''
+
 
                         error("EKS deployment failed. Rollback completed.")
                     }
