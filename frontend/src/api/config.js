@@ -1,4 +1,4 @@
-const API_BASE_URL = "http://127.0.0.1:5002/api"; 
+const API_BASE_URL = "/api"; 
 
 export const getAuthHeader = () => {
   const token = localStorage.getItem("token");
