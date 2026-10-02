@@ -23,6 +23,9 @@ pipeline {
         BACKEND_IMAGE  = 'vikasss0407/onionguardbackend'
 
         IMAGE_TAG = "${BUILD_NUMBER}"
+
+        // Kubernetes kubeconfig copied inside Jenkins container
+        KUBECONFIG = '/var/jenkins_home/.kube/minikube-config'
     }
 
     stages {
@@ -54,7 +57,6 @@ pipeline {
                     sh '''
                     cp "$ENV_FILE" backend/.env
                     '''
-
                 }
             }
         }
@@ -68,9 +70,7 @@ pipeline {
                     docker build \
                     -t ${FRONTEND_IMAGE}:${IMAGE_TAG} .
                     """
-
                 }
-
             }
         }
 
@@ -83,14 +83,11 @@ pipeline {
                     docker build \
                     -t ${BACKEND_IMAGE}:${IMAGE_TAG} .
                     """
-
                 }
-
             }
         }
 
         stage('Docker Login') {
-
             steps {
 
                 withCredentials([
@@ -106,11 +103,8 @@ pipeline {
                     -u "$DOCKER_USERNAME" \
                     --password-stdin
                     '''
-
                 }
-
             }
-
         }
 
         stage('Push Frontend Image') {
@@ -123,7 +117,6 @@ pipeline {
 
                 docker push ${FRONTEND_IMAGE}:latest
                 """
-
             }
         }
 
@@ -137,7 +130,6 @@ pipeline {
 
                 docker push ${BACKEND_IMAGE}:latest
                 """
-
             }
         }
 
@@ -152,6 +144,10 @@ pipeline {
             steps {
 
                 sh '''
+
+                echo "========================================"
+                echo "DEPLOYING DOCKER CONTAINERS"
+                echo "========================================"
 
                 echo "Creating Docker Network..."
 
@@ -180,10 +176,11 @@ pipeline {
                 -p 5001:5173 \
                 ${FRONTEND_IMAGE}:${IMAGE_TAG}
 
+                echo "Docker Containers Started Successfully."
+
                 '''
 
             }
-
         }
 
         stage('Check Kubernetes Connection') {
@@ -197,32 +194,47 @@ pipeline {
             steps {
 
                 sh '''
+
+                set -e
+
                 echo "========================================"
-                echo "KUBERNETES CONNECTION DEBUG"
+                echo "KUBERNETES CONNECTION CHECK"
                 echo "========================================"
+
+                echo ""
+                echo "Kubeconfig:"
+                echo "$KUBECONFIG"
+
+                if [ ! -f "$KUBECONFIG" ]; then
+                    echo "ERROR: Kubeconfig file not found!"
+                    echo "Expected location: $KUBECONFIG"
+                    exit 1
+                fi
 
                 echo ""
                 echo "Current Kubernetes Context:"
-                kubectl config current-context || true
+                kubectl config current-context
 
                 echo ""
                 echo "Available Kubernetes Contexts:"
-                kubectl config get-contexts || true
+                kubectl config get-contexts
 
                 echo ""
                 echo "Kubernetes Nodes:"
-                kubectl get nodes || true
+                kubectl get nodes
 
                 echo ""
-                echo "Kubeconfig Environment Variable:"
-                echo "${KUBECONFIG:-Not Set}"
+                echo "Kubernetes Cluster Info:"
+                kubectl cluster-info
 
                 echo ""
+                echo "Kubernetes connection successful!"
+
                 echo "========================================"
+
                 '''
 
             }
-
         }
 
         stage('Deploy to Kubernetes') {
@@ -244,62 +256,95 @@ pipeline {
                         set -e
 
                         echo "==============================="
-                        echo "Deploying New Version"
+                        echo "DEPLOYING TO KUBERNETES"
                         echo "==============================="
+
+                        echo ""
+                        echo "Applying Kubernetes manifests..."
 
                         kubectl apply -f kubernetes/
 
-                        echo "Updating Backend Image"
+                        echo ""
+                        echo "Updating Backend Image..."
 
                         kubectl set image deployment/onion-backend \
                         backend=${BACKEND_IMAGE}:${IMAGE_TAG}
 
-                        echo "Updating Frontend Image"
+                        echo ""
+                        echo "Updating Frontend Image..."
 
                         kubectl set image deployment/onion-frontend \
                         frontend=${FRONTEND_IMAGE}:${IMAGE_TAG}
 
-                        echo "Checking Backend Rollout"
+                        echo ""
+                        echo "Checking Backend Rollout..."
 
                         kubectl rollout status deployment/onion-backend \
                         --timeout=300s
 
-                        echo "Checking Frontend Rollout"
+                        echo ""
+                        echo "Checking Frontend Rollout..."
 
                         kubectl rollout status deployment/onion-frontend \
                         --timeout=300s
 
-                        echo "Deployment Successful"
+                        echo ""
+                        echo "Checking Pods..."
+
+                        kubectl get pods
+
+                        echo ""
+                        echo "Checking Services..."
+
+                        kubectl get services
+
+                        echo ""
+                        echo "Deployment Successful!"
 
                         '''
 
                     } catch (err) {
 
-                        echo "Deployment Failed!"
+                        echo "========================================"
+                        echo "DEPLOYMENT FAILED!"
                         echo "Starting Automatic Rollback..."
+                        echo "========================================"
 
                         sh '''
 
-                        echo "Rolling back Backend"
+                        echo ""
+                        echo "Rolling back Backend..."
 
                         kubectl rollout undo deployment/onion-backend || true
 
-                        echo "Rolling back Frontend"
+                        echo ""
+                        echo "Rolling back Frontend..."
 
                         kubectl rollout undo deployment/onion-frontend || true
 
-                        echo "Waiting for rollback completion"
+                        echo ""
+                        echo "Waiting for Backend rollback..."
 
-                        kubectl rollout status deployment/onion-backend || true
+                        kubectl rollout status deployment/onion-backend \
+                        --timeout=300s || true
 
-                        kubectl rollout status deployment/onion-frontend || true
+                        echo ""
+                        echo "Waiting for Frontend rollback..."
 
-                        echo "Rollback Completed"
+                        kubectl rollout status deployment/onion-frontend \
+                        --timeout=300s || true
+
+                        echo ""
+                        echo "Current Pods:"
+
+                        kubectl get pods || true
+
+                        echo ""
+                        echo "Rollback Completed."
 
                         '''
 
                         error("Deployment failed. Rollback attempted.")
-
                     }
                 }
             }
@@ -317,11 +362,7 @@ pipeline {
         }
 
         always {
-
             sh 'docker logout || true'
-
         }
-
     }
-
 }
