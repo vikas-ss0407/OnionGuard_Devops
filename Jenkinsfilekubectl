@@ -1,3 +1,4 @@
+```groovy
 pipeline {
     agent any
 
@@ -186,102 +187,124 @@ pipeline {
 
         }
 
-stage('Deploy to Kubernetes') {
+        stage('Check Kubernetes Connection') {
 
-    when {
-        expression {
-            return params.DEPLOY
-        }
-    }
+            when {
+                expression {
+                    return params.DEPLOY
+                }
+            }
 
-    steps {
-
-        script {
-
-            try {
+            steps {
 
                 sh '''
+                echo "========================================"
+                echo "KUBERNETES CONNECTION DEBUG"
+                echo "========================================"
 
-                set -e
+                echo ""
+                echo "Current Kubernetes Context:"
+                kubectl config current-context || true
 
-                echo "==============================="
-                echo "Deploying New Version"
-                echo "==============================="
+                echo ""
+                echo "Available Kubernetes Contexts:"
+                kubectl config get-contexts || true
 
+                echo ""
+                echo "Kubernetes Nodes:"
+                kubectl get nodes || true
 
-                kubectl apply -f kubernetes/
+                echo ""
+                echo "Kubeconfig Environment Variable:"
+                echo "${KUBECONFIG:-Not Set}"
 
-
-                echo "Updating Backend Image"
-
-                kubectl set image deployment/onion-backend \
-                backend=${BACKEND_IMAGE}:${IMAGE_TAG}
-
-
-                echo "Updating Frontend Image"
-
-                kubectl set image deployment/onion-frontend \
-                frontend=${FRONTEND_IMAGE}:${IMAGE_TAG}
-
-
-
-                echo "Checking Backend Rollout"
-
-                kubectl rollout status deployment/onion-backend \
-                --timeout=300s
-
-
-                echo "Checking Frontend Rollout"
-
-                kubectl rollout status deployment/onion-frontend \
-                --timeout=300s
-
-
-
-                echo "Deployment Successful"
-
+                echo ""
+                echo "========================================"
                 '''
-
-
-            } catch (err) {
-
-
-                echo "Deployment Failed!"
-                echo "Starting Automatic Rollback..."
-
-
-                sh '''
-
-                echo "Rolling back Backend"
-
-                kubectl rollout undo deployment/onion-backend
-
-
-                echo "Rolling back Frontend"
-
-                kubectl rollout undo deployment/onion-frontend
-
-
-
-                echo "Waiting for rollback completion"
-
-
-                kubectl rollout status deployment/onion-backend
-
-                kubectl rollout status deployment/onion-frontend
-
-
-                echo "Rollback Completed"
-
-                '''
-
-
-                error("Deployment failed. Rollback completed.")
 
             }
+
         }
-    }
-}
+
+        stage('Deploy to Kubernetes') {
+
+            when {
+                expression {
+                    return params.DEPLOY
+                }
+            }
+
+            steps {
+
+                script {
+
+                    try {
+
+                        sh '''
+
+                        set -e
+
+                        echo "==============================="
+                        echo "Deploying New Version"
+                        echo "==============================="
+
+                        kubectl apply -f kubernetes/
+
+                        echo "Updating Backend Image"
+
+                        kubectl set image deployment/onion-backend \
+                        backend=${BACKEND_IMAGE}:${IMAGE_TAG}
+
+                        echo "Updating Frontend Image"
+
+                        kubectl set image deployment/onion-frontend \
+                        frontend=${FRONTEND_IMAGE}:${IMAGE_TAG}
+
+                        echo "Checking Backend Rollout"
+
+                        kubectl rollout status deployment/onion-backend \
+                        --timeout=300s
+
+                        echo "Checking Frontend Rollout"
+
+                        kubectl rollout status deployment/onion-frontend \
+                        --timeout=300s
+
+                        echo "Deployment Successful"
+
+                        '''
+
+                    } catch (err) {
+
+                        echo "Deployment Failed!"
+                        echo "Starting Automatic Rollback..."
+
+                        sh '''
+
+                        echo "Rolling back Backend"
+
+                        kubectl rollout undo deployment/onion-backend || true
+
+                        echo "Rolling back Frontend"
+
+                        kubectl rollout undo deployment/onion-frontend || true
+
+                        echo "Waiting for rollback completion"
+
+                        kubectl rollout status deployment/onion-backend || true
+
+                        kubectl rollout status deployment/onion-frontend || true
+
+                        echo "Rollback Completed"
+
+                        '''
+
+                        error("Deployment failed. Rollback attempted.")
+
+                    }
+                }
+            }
+        }
     }
 
     post {
@@ -303,3 +326,4 @@ stage('Deploy to Kubernetes') {
     }
 
 }
+```
