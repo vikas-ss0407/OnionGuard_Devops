@@ -19,12 +19,12 @@ spec:
       containers:
       - name: frontend
 
-        image: vikasss0407/onionfrontend:latest
+        image: vikasss0407/onionguardfrontend:latest
 
         imagePullPolicy: Always
 
         ports:
-        - containerPort: 5173
+        - containerPort: 80
 
         resources:
           requests:
